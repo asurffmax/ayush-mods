@@ -619,10 +619,8 @@ class OverlayService : Service() {
         border.visibility = View.GONE
         wm.addView(border, p)
 
-        var moved = false
-        drag(border, border, p, { moved = true; savePos(p) }, null)
+        drag(border, border, p, { savePos(p) }, null)
         border.setOnClickListener {
-            if (moved) { moved = false; return@setOnClickListener }
             border.visibility = View.GONE
             panel?.visibility = View.VISIBLE
             panelParams?.let { pp ->
@@ -687,14 +685,17 @@ class OverlayService : Service() {
         onDrop: () -> Unit, onLong: (() -> Unit)?
     ) {
         var sx = 0; var sy = 0; var dx0 = 0f; var dy0 = 0f
+        var moved = false
+        var longFired = false
         var pending: Runnable? = null
 
         handle.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     sx = p.x; sy = p.y; dx0 = e.rawX; dy0 = e.rawY
+                    moved = false; longFired = false
                     if (onLong != null) {
-                        val r = Runnable { onLong(); pending = null }
+                        val r = Runnable { longFired = true; onLong(); pending = null }
                         pending = r
                         handle.postDelayed(r, 480L)
                     }
@@ -705,6 +706,7 @@ class OverlayService : Service() {
                     p.y = sy + (e.rawY - dy0).toInt()
                     runCatching { wm.updateViewLayout(root, p) }
                     if (abs(e.rawX - dx0) > 14f || abs(e.rawY - dy0) > 14f) {
+                        moved = true
                         pending?.let { handle.removeCallbacks(it); pending = null }
                     }
                     true
@@ -712,14 +714,15 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     pending?.let { handle.removeCallbacks(it); pending = null }
                     onDrop()
-                    false
+                    if (e.actionMasked == MotionEvent.ACTION_UP && !moved && !longFired) {
+                        handle.performClick()
+                    }
+                    true
                 }
                 else -> false
             }
         }
-    }
-
-    private fun savePos(p: WindowManager.LayoutParams) {
+    }(p: WindowManager.LayoutParams) {
         Prefs.sp(this).edit().putInt(Prefs.X, p.x).putInt(Prefs.Y, p.y).apply()
     }
 
