@@ -1,0 +1,72 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Identify and arrange project files
+        run: |
+          set -e
+          mkdir -p app/src/main/java/com/ayush/mods
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/xml
+
+          put() { if [ ! -f "$2" ]; then mv "$1" "$2"; fi; }
+
+          for f in $(find . -maxdepth 1 -type f -printf '%f\n'); do
+            [ -f "$f" ] || continue
+            if   grep -q "apply false"                "$f"; then put "$f" build_root.gradle
+            elif grep -q "namespace 'com.ayush.mods'" "$f"; then put "$f" build_app.gradle
+            elif grep -q "pluginManagement"           "$f"; then put "$f" settings.gradle
+            elif grep -q "android.useAndroidX"        "$f"; then put "$f" gradle.properties
+            elif grep -q "accessibility-service"      "$f"; then put "$f" accessibility_service_config.xml
+            elif grep -q "viewportWidth"              "$f"; then put "$f" ic_launcher.xml
+            elif grep -q "<manifest"                  "$f"; then put "$f" AndroidManifest.xml
+            elif grep -q "package com.ayush.mods"     "$f"; then put "$f" AyushMods.kt
+            else echo "unmatched file: $f"
+            fi
+          done
+
+          mv build_root.gradle build.gradle
+          mv build_app.gradle app/build.gradle
+          mv AndroidManifest.xml app/src/main/AndroidManifest.xml
+          mv AyushMods.kt app/src/main/java/com/ayush/mods/AyushMods.kt
+          mv ic_launcher.xml app/src/main/res/drawable/ic_launcher.xml
+          mv accessibility_service_config.xml app/src/main/res/xml/accessibility_service_config.xml
+
+          for need in \
+            settings.gradle gradle.properties build.gradle app/build.gradle \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/com/ayush/mods/AyushMods.kt \
+            app/src/main/res/drawable/ic_launcher.xml \
+            app/src/main/res/xml/accessibility_service_config.xml; do
+            if [ ! -f "$need" ]; then echo "MISSING: $need"; exit 1; fi
+          done
+
+          echo "ALL 8 FILES IN PLACE"
+          find . -path ./.git -prune -o -type f -print | sort
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APK
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AYUSH-MODS-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
