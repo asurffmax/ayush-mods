@@ -35,7 +35,6 @@ jobs:
           done
 
           mv build_root.gradle build.gradle
-          mv build_app.gradle app/build.gradle
           mv AndroidManifest.xml app/src/main/AndroidManifest.xml
           mv AyushMods.kt app/src/main/java/com/ayush/mods/AyushMods.kt
           mv ic_launcher.xml app/src/main/res/drawable/ic_launcher.xml
